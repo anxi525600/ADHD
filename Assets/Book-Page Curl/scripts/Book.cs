@@ -142,6 +142,7 @@ public class Book : MonoBehaviour {
         if (interactable && !pageDragging)
         {
             // 按 G 鍵：向後翻頁 (從右往左翻開新頁面)
+            // 💡 終極防禦：必須確保目前頁數還能允許至少往後走（currentPage < 總長度）
             if (Input.GetKeyDown(KeyCode.G) && currentPage < bookPages.Length)
             {
                 StartKeyPressFlip(FlipMode.RightToLeft);
@@ -159,13 +160,16 @@ public class Book : MonoBehaviour {
     /// </summary>
     private void StartKeyPressFlip(FlipMode flipMode)
     {
-        pageDragging = true;
         mode = flipMode;
-
-        if (currentCoroutine != null) StopCoroutine(currentCoroutine);
 
         if (mode == FlipMode.RightToLeft)
         {
+            // 💡 核心安全檢查：如果是向後翻頁，必須再次確保目前頁面小於總長度才允許啟動 Drag 動畫
+            if (currentPage >= bookPages.Length) return;
+
+            pageDragging = true;
+            if (currentCoroutine != null) StopCoroutine(currentCoroutine);
+
             // 模擬從右下角稍微偏內的位置開始拉動
             f = ebr - new Vector3(10f, -10f, 0); 
             DragRightPageToPoint(f);
@@ -174,6 +178,12 @@ public class Book : MonoBehaviour {
         }
         else
         {
+            // 💡 核心安全檢查：如果是向前翻頁，必須大於 0 才允許啟動
+            if (currentPage <= 0) return;
+
+            pageDragging = true;
+            if (currentCoroutine != null) StopCoroutine(currentCoroutine);
+
             // 模擬從左下角稍微偏內的位置開始拉動
             f = ebl - new Vector3(-10f, -10f, 0);
             DragLeftPageToPoint(f);
@@ -319,6 +329,8 @@ public class Book : MonoBehaviour {
         Left.rectTransform.pivot = new Vector2(0, 0);
         Left.transform.position = RightNext.transform.position;
         Left.transform.eulerAngles = new Vector3(0, 0, 0);
+        
+        // 💡 終極防禦：嚴格檢查陣列邊界，如果超出了就不抓圖，直接改用預設 background 頂替
         Left.sprite = (currentPage < bookPages.Length) ? bookPages[currentPage] : background;
         Left.transform.SetAsFirstSibling();
         
@@ -345,7 +357,9 @@ public class Book : MonoBehaviour {
 
         Right.gameObject.SetActive(true);
         Right.transform.position = LeftNext.transform.position;
-        Right.sprite = bookPages[currentPage - 1];
+        
+        // 💡 終極防禦：向前翻頁時也做安全邊界防禦
+        Right.sprite = (currentPage - 1 >= 0 && currentPage - 1 < bookPages.Length) ? bookPages[currentPage - 1] : background;
         Right.transform.eulerAngles = new Vector3(0, 0, 0);
         Right.transform.SetAsFirstSibling();
 
@@ -353,9 +367,9 @@ public class Book : MonoBehaviour {
         Left.rectTransform.pivot = new Vector2(1, 0);
         Left.transform.position = LeftNext.transform.position;
         Left.transform.eulerAngles = new Vector3(0, 0, 0);
-        Left.sprite = (currentPage >= 2) ? bookPages[currentPage - 2] : background;
+        Left.sprite = (currentPage >= 2 && currentPage - 2 < bookPages.Length) ? bookPages[currentPage - 2] : background;
 
-        LeftNext.sprite = (currentPage >= 3) ? bookPages[currentPage - 3] : background;
+        LeftNext.sprite = (currentPage >= 3 && currentPage - 3 < bookPages.Length) ? bookPages[currentPage - 3] : background;
 
         RightNext.transform.SetAsFirstSibling();
         if (enableShadowEffect) ShadowLTR.gameObject.SetActive(true);
@@ -365,8 +379,9 @@ public class Book : MonoBehaviour {
     Coroutine currentCoroutine;
     void UpdateSprites()
     {
-        LeftNext.sprite= (currentPage > 0 && currentPage <= bookPages.Length) ? bookPages[currentPage-1] : background;
-        RightNext.sprite=(currentPage>=0 &&currentPage<bookPages.Length) ? bookPages[currentPage] : background;
+        // 💡 終極防禦：常態更新精靈時也加上三元運算子防禦
+        LeftNext.sprite = (currentPage > 0 && currentPage - 1 < bookPages.Length) ? bookPages[currentPage - 1] : background;
+        RightNext.sprite = (currentPage >= 0 && currentPage < bookPages.Length) ? bookPages[currentPage] : background;
     }
 
     void Flip()
@@ -375,6 +390,11 @@ public class Book : MonoBehaviour {
             currentPage += 2;
         else
             currentPage -= 2;
+            
+        // 💡 終極防禦：翻頁結束後，強行把超出最大範圍的 currentPage 壓回最極限上限
+        if (currentPage > bookPages.Length) currentPage = bookPages.Length;
+        if (currentPage < 0) currentPage = 0;
+
         LeftNext.transform.SetParent(BookPanel.transform, true);
         Left.transform.SetParent(BookPanel.transform, true);
         LeftNext.transform.SetParent(BookPanel.transform, true);
