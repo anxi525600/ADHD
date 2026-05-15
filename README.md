@@ -240,4 +240,4 @@ git push origin v1.0
 git status
 ```
 
-再問隊友或查錯誤訊息即可。
+再問隊友或AI查錯誤訊息即可。
