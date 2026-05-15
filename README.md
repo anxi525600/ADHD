@@ -78,7 +78,7 @@ F:\unity\ADHD
 請手動開場景：
 
 ```text
-Assets/CoffeeShopInteriorDAY/CoffeeShopInteriorDAY.unity
+CoffeeShopInteriorDAY
 ```
 
 ---
@@ -228,38 +228,6 @@ git tag -a v1.0 -m "stable build: all systems working"
 
 ```bash
 git push origin v1.0
-```
-
----
-
-# ⚠️ Unity 協作規則（重要）
-
-## ❌ 不要動：
-
-- Library/
-- ProjectSettings/
-- .meta（除非必要）
-
----
-
-## ⚠️ Scene 容易衝突
-
-避免多人同時改：
-
-```text
-CoffeeShopInteriorDAY.unity
-```
-
----
-
-## ✅ 建議流程
-
-```text
-git pull
-→ 開發
-→ git add .
-→ git commit
-→ git push
 ```
 
 ---
