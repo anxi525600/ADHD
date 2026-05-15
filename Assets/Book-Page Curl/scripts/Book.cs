@@ -6,11 +6,13 @@ using UnityEngine;
 using System.Collections;
 using UnityEngine.UI;
 using UnityEngine.Events;
+
 public enum FlipMode
 {
     RightToLeft,
     LeftToRight
 }
+
 [ExecuteInEditMode]
 public class Book : MonoBehaviour {
     public Canvas canvas;
@@ -81,7 +83,6 @@ public class Book : MonoBehaviour {
         float pageHeight = BookPanel.rect.height;
         NextPageClip.rectTransform.sizeDelta = new Vector2(pageWidth, pageHeight + pageHeight * 2);
 
-
         ClippingPlane.rectTransform.sizeDelta = new Vector2(pageWidth * 2 + pageHeight, pageHeight + pageHeight * 2);
 
         //hypotenous (diagonal) page length
@@ -93,7 +94,6 @@ public class Book : MonoBehaviour {
 
         ShadowLTR.rectTransform.sizeDelta = new Vector2(pageWidth, shadowPageHeight);
         ShadowLTR.rectTransform.pivot = new Vector2(0, (pageWidth / 2) / shadowPageHeight);
-
     }
 
     private void CalcCurlCriticalPoints()
@@ -108,13 +108,13 @@ public class Book : MonoBehaviour {
         radius2 = Mathf.Sqrt(pageWidth * pageWidth + pageHeight * pageHeight);
     }
 
+    // 因改為純鍵盤控制，原 transformPoint 暫無外部呼叫，保留供不時之需
     public Vector3 transformPoint(Vector3 mouseScreenPos)
     {
         if (canvas.renderMode == RenderMode.ScreenSpaceCamera)
         {
             Vector3 mouseWorldPos = canvas.worldCamera.ScreenToWorldPoint(new Vector3(mouseScreenPos.x, mouseScreenPos.y, canvas.planeDistance));
             Vector2 localPos = BookPanel.InverseTransformPoint(mouseWorldPos);
-
             return localPos;
         }
         else if (canvas.renderMode == RenderMode.WorldSpace)
@@ -131,26 +131,57 @@ public class Book : MonoBehaviour {
         }
         else
         {
-            //Screen Space Overlay
             Vector2 localPos = BookPanel.InverseTransformPoint(mouseScreenPos);
             return localPos;
         }
     }
+
     void Update()
     {
-        if (pageDragging && interactable)
+        // 如果正在播放動畫，由 Coroutine 控制 UpdateBook，這裡只偵測按鍵輸入
+        if (interactable && !pageDragging)
         {
-            UpdateBook();
+            // 按 G 鍵：向後翻頁 (從右往左翻開新頁面)
+            if (Input.GetKeyDown(KeyCode.G) && currentPage < bookPages.Length)
+            {
+                StartKeyPressFlip(FlipMode.RightToLeft);
+            }
+            // 按 F 鍵：向前翻頁 (從左往右翻回前一頁)
+            else if (Input.GetKeyDown(KeyCode.F) && currentPage > 0)
+            {
+                StartKeyPressFlip(FlipMode.LeftToRight);
+            }
         }
     }
-    public void UpdateBook()
+
+    /// <summary>
+    /// 觸發按鍵翻頁的自動動畫
+    /// </summary>
+    private void StartKeyPressFlip(FlipMode flipMode)
     {
-        f = Vector3.Lerp(f, transformPoint(Input.mousePosition), Time.deltaTime * 10);
+        pageDragging = true;
+        mode = flipMode;
+
+        if (currentCoroutine != null) StopCoroutine(currentCoroutine);
+
         if (mode == FlipMode.RightToLeft)
-            UpdateBookRTLToPoint(f);
+        {
+            // 模擬從右下角稍微偏內的位置開始拉動
+            f = ebr - new Vector3(10f, -10f, 0); 
+            DragRightPageToPoint(f);
+            // 自動把頁面拉到左下角完成翻頁
+            currentCoroutine = StartCoroutine(TweenTo(ebl, 0.25f, () => { Flip(); }));
+        }
         else
-            UpdateBookLTRToPoint(f);
+        {
+            // 模擬從左下角稍微偏內的位置開始拉動
+            f = ebl - new Vector3(-10f, -10f, 0);
+            DragLeftPageToPoint(f);
+            // 自動把頁面拉到右下角完成翻頁
+            currentCoroutine = StartCoroutine(TweenTo(ebr, 0.25f, () => { Flip(); }));
+        }
     }
+
     public void UpdateBookLTRToPoint(Vector3 followLocation)
     {
         mode = FlipMode.LeftToRight;
@@ -167,13 +198,11 @@ public class Book : MonoBehaviour {
         c = Calc_C_Position(followLocation);
         Vector3 t1;
         float clipAngle = CalcClipAngle(c, ebl, out t1);
-        //0 < T0_T1_Angle < 180
         clipAngle = (clipAngle + 180) % 180;
 
         ClippingPlane.transform.localEulerAngles = new Vector3(0, 0, clipAngle - 90);
         ClippingPlane.transform.position = BookPanel.TransformPoint(t1);
 
-        //page position and angle
         Left.transform.position = BookPanel.TransformPoint(c);
         float C_T1_dy = t1.y - c.y;
         float C_T1_dx = t1.x - c.x;
@@ -188,6 +217,7 @@ public class Book : MonoBehaviour {
 
         ShadowLTR.rectTransform.SetParent(Left.rectTransform, true);
     }
+
     public void UpdateBookRTLToPoint(Vector3 followLocation)
     {
         mode = FlipMode.RightToLeft;
@@ -209,7 +239,6 @@ public class Book : MonoBehaviour {
         ClippingPlane.transform.localEulerAngles = new Vector3(0, 0, clipAngle + 90);
         ClippingPlane.transform.position = BookPanel.TransformPoint(t1);
 
-        //page position and angle
         Right.transform.position = BookPanel.TransformPoint(c);
         float C_T1_dy = t1.y - c.y;
         float C_T1_dx = t1.x - c.x;
@@ -224,7 +253,8 @@ public class Book : MonoBehaviour {
 
         Shadow.rectTransform.SetParent(Right.rectTransform, true);
     }
-    private float CalcClipAngle(Vector3 c,Vector3 bookCorner,out  Vector3 t1)
+
+    private float CalcClipAngle(Vector3 c,Vector3 bookCorner,out Vector3 t1)
     {
         Vector3 t0 = (c + bookCorner) / 2;
         float T0_CORNER_dy = bookCorner.y - t0.y;
@@ -236,12 +266,12 @@ public class Book : MonoBehaviour {
         T1_X = normalizeT1X(T1_X, bookCorner, sb);
         t1 = new Vector3(T1_X, sb.y, 0);
         
-        //clipping plane angle=T0_T1_Angle
         float T0_T1_dy = t1.y - t0.y;
         float T0_T1_dx = t1.x - t0.x;
         T0_T1_Angle = Mathf.Atan2(T0_T1_dy, T0_T1_dx) * Mathf.Rad2Deg;
         return T0_T1_Angle;
     }
+
     private float normalizeT1X(float t1,Vector3 corner,Vector3 sb)
     {
         if (t1 > sb.x && sb.x > corner.x)
@@ -250,6 +280,7 @@ public class Book : MonoBehaviour {
             return sb.x;
         return t1;
     }
+
     private Vector3 Calc_C_Position(Vector3 followLocation)
     {
         Vector3 c;
@@ -274,13 +305,12 @@ public class Book : MonoBehaviour {
             c = r2;
         return c;
     }
+
     public void DragRightPageToPoint(Vector3 point)
     {
         if (currentPage >= bookPages.Length) return;
-        pageDragging = true;
         mode = FlipMode.RightToLeft;
         f = point;
-
 
         NextPageClip.rectTransform.pivot = new Vector2(0, 0.12f);
         ClippingPlane.rectTransform.pivot = new Vector2(1, 0.35f);
@@ -303,16 +333,10 @@ public class Book : MonoBehaviour {
         if (enableShadowEffect) Shadow.gameObject.SetActive(true);
         UpdateBookRTLToPoint(f);
     }
-    public void OnMouseDragRightPage()
-    {
-        if (interactable)
-        DragRightPageToPoint(transformPoint(Input.mousePosition));
-        
-    }
+
     public void DragLeftPageToPoint(Vector3 point)
     {
         if (currentPage <= 0) return;
-        pageDragging = true;
         mode = FlipMode.LeftToRight;
         f = point;
 
@@ -337,45 +361,14 @@ public class Book : MonoBehaviour {
         if (enableShadowEffect) ShadowLTR.gameObject.SetActive(true);
         UpdateBookLTRToPoint(f);
     }
-    public void OnMouseDragLeftPage()
-    {
-        if (interactable)
-        DragLeftPageToPoint(transformPoint(Input.mousePosition));
-        
-    }
-    public void OnMouseRelease()
-    {
-        if (interactable)
-            ReleasePage();
-    }
-    public void ReleasePage()
-    {
-        if (pageDragging)
-        {
-            pageDragging = false;
-            float distanceToLeft = Vector2.Distance(c, ebl);
-            float distanceToRight = Vector2.Distance(c, ebr);
-            if (distanceToRight < distanceToLeft && mode == FlipMode.RightToLeft)
-                TweenBack();
-            else if (distanceToRight > distanceToLeft && mode == FlipMode.LeftToRight)
-                TweenBack();
-            else
-                TweenForward();
-        }
-    }
+
     Coroutine currentCoroutine;
     void UpdateSprites()
     {
         LeftNext.sprite= (currentPage > 0 && currentPage <= bookPages.Length) ? bookPages[currentPage-1] : background;
         RightNext.sprite=(currentPage>=0 &&currentPage<bookPages.Length) ? bookPages[currentPage] : background;
     }
-    public void TweenForward()
-    {
-        if(mode== FlipMode.RightToLeft)
-        currentCoroutine = StartCoroutine(TweenTo(ebl, 0.15f, () => { Flip(); }));
-        else
-        currentCoroutine = StartCoroutine(TweenTo(ebr, 0.15f, () => { Flip(); }));
-    }
+
     void Flip()
     {
         if (mode == FlipMode.RightToLeft)
@@ -392,57 +385,34 @@ public class Book : MonoBehaviour {
         UpdateSprites();
         Shadow.gameObject.SetActive(false);
         ShadowLTR.gameObject.SetActive(false);
+        
+        pageDragging = false; // 動畫結束，釋放狀態鎖定
+
         if (OnFlip != null)
             OnFlip.Invoke();
     }
-    public void TweenBack()
-    {
-        if (mode == FlipMode.RightToLeft)
-        {
-            currentCoroutine = StartCoroutine(TweenTo(ebr,0.15f,
-                () =>
-                {
-                    UpdateSprites();
-                    RightNext.transform.SetParent(BookPanel.transform);
-                    Right.transform.SetParent(BookPanel.transform);
 
-                    Left.gameObject.SetActive(false);
-                    Right.gameObject.SetActive(false);
-                    pageDragging = false;
-                }
-                ));
-        }
-        else
-        {
-            currentCoroutine = StartCoroutine(TweenTo(ebl, 0.15f,
-                () =>
-                {
-                    UpdateSprites();
-
-                    LeftNext.transform.SetParent(BookPanel.transform);
-                    Left.transform.SetParent(BookPanel.transform);
-
-                    Left.gameObject.SetActive(false);
-                    Right.gameObject.SetActive(false);
-                    pageDragging = false;
-                }
-                ));
-        }
-    }
     public IEnumerator TweenTo(Vector3 to, float duration, System.Action onFinish)
     {
         int steps = (int)(duration / 0.025f);
         Vector3 displacement = (to - f) / steps;
         for (int i = 0; i < steps-1; i++)
         {
-            if(mode== FlipMode.RightToLeft)
-            UpdateBookRTLToPoint( f + displacement);
+            f += displacement;
+            if(mode == FlipMode.RightToLeft)
+                UpdateBookRTLToPoint(f);
             else
-                UpdateBookLTRToPoint(f + displacement);
+                UpdateBookLTRToPoint(f);
 
             yield return new WaitForSeconds(0.025f);
         }
         if (onFinish != null)
             onFinish();
+    }
+
+    // 為了相容 AutoFlip.cs 補回的空殼函式，避免 Unity 報錯
+    public void ReleasePage()
+    {
+        // 鍵盤模式下不需要處理滑鼠放開的邏輯，這裡留空即可
     }
 }
